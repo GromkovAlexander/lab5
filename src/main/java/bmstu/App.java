@@ -103,7 +103,7 @@ public class App {
                                             5000
                                     );
                                     Double delayTime = (double) summ / (double) countInteger;
-                                    return CompletableFuture.completedFuture(HttpResponse.create().withEntity("Delay " + delayTime));
+                                    return CompletableFuture.completedFuture(HttpResponse.create().withEntity("Delay " + delayTime.toString()));
                                 });
                             });
                     CompletionStage<HttpResponse> result = source.via(testSink)
