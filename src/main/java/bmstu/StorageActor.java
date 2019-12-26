@@ -10,7 +10,7 @@ import java.util.Map;
 
 public class StorageActor extends AbstractActor {
 
-    private HashMap<String, Map<Integer, Integer>> storage;
+    private HashMap<String, Map<Integer, Integer>> storage = new HashMap<>();
 
     @Override
     public Receive createReceive() {

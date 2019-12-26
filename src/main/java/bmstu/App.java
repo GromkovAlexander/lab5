@@ -26,20 +26,23 @@ import java.util.concurrent.CompletionStage;
 
 public class App {
 
+
     private final static int ZERO = 0;
+    private final static int ACTIVATE_PARALELLSIM = 1;
+    private final static int DURATION = 10000;
 
     public static void main(String[] args) throws IOException {
         System.out.println("start!");
         ActorSystem system = ActorSystem.create("routes");
-        Props props;
+
         ActorRef storageActor = system.actorOf(Props.create(StorageActor.class));
         final Http http = Http.get(system);
         final ActorMaterializer materializer = ActorMaterializer.create(system);
 
         final Flow<HttpRequest, HttpResponse, NotUsed> routeFlow = Flow.of(HttpRequest.class).map(
                 req -> {
-                    String url = String.valueOf(req.getUri().query().get("testUrl"));
-                    String count = String.valueOf(req.getUri().query().get("count"));
+                    String url = req.getUri().query().get("testUrl").orElse("");
+                    String count = req.getUri().query().get("count").orElse("");
 
                     Integer countInteger = Integer.parseInt(count);
                     Pair<String, Integer> data = new Pair<>(url, countInteger);
@@ -49,14 +52,14 @@ public class App {
                     Flow<Pair<String, Integer>, HttpResponse, NotUsed> testSink = Flow.<Pair<String, Integer>>create()
                             .map(pair ->
                                     new Pair<>(HttpRequest.create().withUri(pair.first()), pair.second()))
-                            .mapAsync(1, pair -> {
+                            .mapAsync(ACTIVATE_PARALELLSIM, pair -> {
                                 return Patterns.ask(
                                         storageActor,
                                         new SearchResult(data.first(), data.second()),
-                                        Duration.ofMillis(5000)
-                                ).thenCompose(answer -> {
-                                    if ((Integer)answer != -1) {
-                                        return CompletableFuture.completedFuture((Integer)answer);
+                                        Duration.ofMillis(DURATION)
+                                ).thenCompose(actorAnswer -> {
+                                    if ((int)actorAnswer != -1) {
+                                        return CompletableFuture.completedFuture((int)actorAnswer);
                                     }
 
                                     Sink<CompletionStage<Long>, CompletionStage<Integer>> fold = Sink.
@@ -70,13 +73,13 @@ public class App {
                                                     Flow.<Pair<HttpRequest, Integer>>create()
                                                     .mapConcat(p ->
                                                             Collections.nCopies(p.second(), p.first())
-                                                    ).mapAsync(1, request -> {
+                                                    ).mapAsync(ACTIVATE_PARALELLSIM, request -> {
                                                         return CompletableFuture.supplyAsync(
                                                                 () -> System.currentTimeMillis()
                                                         ).thenCompose(time ->
                                                                 CompletableFuture.supplyAsync(
                                                                         () -> {
-                                                                            return (CompletionStage<Long>) asyncHttpClient()
+                                                                            CompletionStage<Long> whenResponse = asyncHttpClient()
                                                                                     .prepareGet(request.getUri().toString())
                                                                                     .execute()
                                                                                     .toCompletableFuture()
@@ -84,6 +87,7 @@ public class App {
                                                                                             answerTime ->
                                                                                                     CompletableFuture.completedFuture(System.currentTimeMillis() - time)
                                                                                     );
+                                                                            return whenResponse;
                                                                         }
                                                                 )
                                                         );
@@ -100,7 +104,7 @@ public class App {
                                                     data.second(),
                                                     summ
                                             ),
-                                            5000
+                                            DURATION
                                     );
                                     Double delayTime = (double) summ / (double) countInteger;
                                     return CompletableFuture.completedFuture(HttpResponse.create().withEntity("Delay " + delayTime.toString()));
