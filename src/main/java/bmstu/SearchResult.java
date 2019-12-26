@@ -7,6 +7,10 @@ import java.util.Map;
 public class SearchResult {
     private Pair<String, Integer> res;
 
+    public SearchResult(String url, Integer count) {
+        this.res = new Pair<>(url, count);
+    }
+
     public SearchResult(Pair<String, Integer> res) {
         this.res = res;
     }
