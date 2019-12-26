@@ -12,6 +12,10 @@ public class AddResult {
         this.result = result;
     }
 
+    public AddResult(String url, Integer count, Integer time) {
+        this.result = new Pair<>(url, new Pair<>(count, time));
+    }
+
     public String getUrl() {
         return result.getKey();
     }

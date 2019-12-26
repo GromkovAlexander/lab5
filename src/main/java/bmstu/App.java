@@ -15,19 +15,19 @@ import akka.stream.javadsl.Keep;
 import akka.stream.javadsl.Sink;
 import akka.stream.javadsl.Source;
 import akka.japi.Pair;
-import akka.util.ByteString;
 
 import static org.asynchttpclient.Dsl.asyncHttpClient;
 
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 public class App {
+
+    private final static int ZERO = 0;
+
     public static void main(String[] args) throws IOException {
         System.out.println("start!");
         ActorSystem system = ActorSystem.create("routes");
@@ -50,7 +50,7 @@ public class App {
                             .map(pair ->
                                     new Pair<>(HttpRequest.create().withUri(pair.first()), pair.second()))
                             .mapAsync(1, pair -> {
-                                Patterns.ask(
+                                return Patterns.ask(
                                         storageActor,
                                         new SearchResult(data.first(), data.second()),
                                         Duration.ofMillis(5000)
@@ -59,7 +59,11 @@ public class App {
                                         return CompletableFuture.completedFuture((Integer)answer);
                                     }
 
-                                    
+                                    Sink<CompletionStage<Long>, CompletionStage<Integer>> fold = Sink.
+                                            fold(ZERO, (ac, el) -> {
+                                                int testEl = (int)(ZERO + el.toCompletableFuture().get());
+                                                return ac + testEl;
+                                            });
 
                                     return Source.from(Collections.singletonList(pair))
                                             .toMat(
@@ -72,7 +76,7 @@ public class App {
                                                         ).thenCompose(time ->
                                                                 CompletableFuture.supplyAsync(
                                                                         () -> {
-                                                                            return asyncHttpClient()
+                                                                            return (CompletionStage<Long>) asyncHttpClient()
                                                                                     .prepareGet(request.getUri().toString())
                                                                                     .execute()
                                                                                     .toCompletableFuture()
@@ -84,20 +88,38 @@ public class App {
                                                                 )
                                                         );
                                                     })
-                                                    .toMat()
+                                                    .toMat(fold, Keep.right()),
+                                                    Keep.right()
                                             )
-
-                                })
-                            })
+                                            .run(materializer);
+                                }).thenCompose(summ -> {
+                                    Patterns.ask(
+                                            storageActor,
+                                            new AddResult(
+                                                    data.first(),
+                                                    data.second(),
+                                                    summ
+                                            ),
+                                            5000
+                                    );
+                                    Double delayTime = (double) summ / (double) countInteger;
+                                    return CompletableFuture.completedFuture(HttpResponse.create().withEntity("Средняя задержка " + delayTime));
+                                });
+                            });
+                    CompletionStage<HttpResponse> result = source.via(testSink)
+                            .toMat(Sink.last(), Keep.right())
+                            .run(materializer);
+                    return result.toCompletableFuture().get();
 
                 }
-        )
+        );
 
         final CompletionStage<ServerBinding> binding = http.bindAndHandle(
                 routeFlow,
                 ConnectHttp.toHost("localhost", 8080),
                 materializer
         );
+
         System.out.println("Server online at http://localhost:8080/\nPress RETURN to stop...");
         System.in.read();
         binding
